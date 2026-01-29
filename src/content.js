@@ -112,16 +112,38 @@
 
   // Listen for custom event from background
   window.addEventListener('read-from-here', (e) => {
-    // Find the element at the event target (simulate context menu target)
-    let target = document.activeElement;
-    if (!target || target === document.body) target = document.elementFromPoint(e.detail?.clientX || 0, e.detail?.clientY || 0) || document.body;
-    // Collect all blocks from target downward
-    blocks = Array.from(target.closest(BLOCK_SELECTOR) ?
-      target.closest(BLOCK_SELECTOR).parentElement.querySelectorAll(BLOCK_SELECTOR) :
-      document.querySelectorAll(BLOCK_SELECTOR));
-    currentIdx = blocks.indexOf(target.closest(BLOCK_SELECTOR));
-    if (currentIdx < 0) currentIdx = 0;
-    speakBlock(currentIdx);
+      // If user has selected text, read from selection
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
+        stopReading();
+        // Read only the selected text
+        utter = new SpeechSynthesisUtterance(selection.toString());
+        utter.lang = detectLang(selection.anchorNode && selection.anchorNode.parentElement ? selection.anchorNode.parentElement : document.body) || navigator.language;
+        utter.onend = () => {
+          pauseBtn.textContent = '⏸️ Pause';
+        };
+        utter.onpause = () => {
+          pauseBtn.textContent = '▶️ Play';
+        };
+        utter.onresume = () => {
+          pauseBtn.textContent = '⏸️ Pause';
+        };
+        synth.speak(utter);
+        bar.style.display = 'flex';
+        pauseBtn.textContent = '⏸️ Pause';
+        document.getElementById('rfh-status').textContent = `Selected text`;
+        return;
+      }
+      // Otherwise, use block logic
+      let target = document.activeElement;
+      if (!target || target === document.body) target = document.elementFromPoint(e.detail?.clientX || 0, e.detail?.clientY || 0) || document.body;
+      let block = target.closest(BLOCK_SELECTOR);
+      if (!block) block = document.body;
+      // Collect all blocks in document
+      blocks = Array.from(document.querySelectorAll(BLOCK_SELECTOR));
+      currentIdx = blocks.indexOf(block);
+      if (currentIdx < 0) currentIdx = 0;
+      speakBlock(currentIdx);
   });
 
   // Clean up on navigation
