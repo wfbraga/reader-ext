@@ -4,13 +4,24 @@
 (function() {
   // Overlay UI HTML
   const overlayHTML = `
-    <div id="rfh-overlay" style="position:fixed;top:0;left:0;width:100vw;z-index:2147483647;background:#eee;color:#222;box-shadow:0 2px 8px #0002;display:none;align-items:center;gap:8px;padding:8px 16px;font-family:sans-serif;">
-      <button id="rfh-prev">⏮️ Last block</button>
-      <button id="rfh-pause">⏸️ Pause</button>
-      <button id="rfh-next">⏭️ Next block</button>
-      <button id="rfh-stop">⏹️ Stop</button>
-      <button id="rfh-contrast">🌓 High Contrast</button>
-      <span id="rfh-status" style="margin-left:16px;"></span>
+    <div id="rfh-overlay" style="position:fixed;top:0;left:0;width:100vw;z-index:2147483647;background:#eee;color:#222;box-shadow:0 2px 8px #0002;display:none;align-items:center;gap:8px;padding:8px 16px;font-family:sans-serif;flex-wrap:wrap;">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;width:100%;">
+        <button id="rfh-prev">⏮️ Last block</button>
+        <button id="rfh-pause">⏸️ Pause</button>
+        <button id="rfh-next">⏭️ Next block</button>
+        <button id="rfh-stop">⏹️ Stop</button>
+        <button id="rfh-contrast">🌓 High Contrast</button>
+        <label style="margin-left:8px;display:flex;align-items:center;gap:4px;">
+          <span>Voice:</span>
+          <select id="rfh-voice" style="max-width:180px;"></select>
+        </label>
+        <label style="margin-left:8px;display:flex;align-items:center;gap:4px;">
+          <span>Speed:</span>
+          <input id="rfh-rate" type="range" min="0.5" max="2" step="0.25" value="1" style="width:80px;">
+          <span id="rfh-rate-value">1.00</span>
+        </label>
+        <span id="rfh-status" style="margin-left:16px;"></span>
+      </div>
     </div>
   `;
 
@@ -26,6 +37,84 @@
   let synth = window.speechSynthesis;
   let utter = null;
   let highContrast = false;
+  let voices = [];
+  let selectedVoice = null;
+  let selectedRate = 1.0;
+  // Responsive overlay CSS
+  const style = document.createElement('style');
+  style.textContent = `
+    #rfh-overlay { flex-direction: row; flex-wrap: wrap; }
+    #rfh-overlay label { min-width: 120px; }
+    @media (max-width: 600px) {
+      #rfh-overlay > div { flex-direction: column; align-items: stretch; }
+      #rfh-overlay label, #rfh-overlay select, #rfh-overlay input[type=range] { width: 100%; min-width: 0; }
+      #rfh-overlay button { width: 100%; margin-bottom: 4px; }
+    }
+  `;
+  document.head.appendChild(style);
+  // Voice dropdown and rate slider logic
+  const voiceSelect = document.getElementById('rfh-voice');
+  const rateSlider = document.getElementById('rfh-rate');
+  const rateValue = document.getElementById('rfh-rate-value');
+
+  function populateVoices() {
+    voices = synth.getVoices();
+    voiceSelect.innerHTML = '';
+    voices.forEach((voice, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${voice.name} (${voice.lang})${voice.default ? ' [default]' : ''}`;
+      voiceSelect.appendChild(opt);
+    });
+    // Default: prefer Google voice matching page lang, then any Google, then any matching lang, then default
+    let pageLang = (document.documentElement.lang || navigator.language || 'en').toLowerCase();
+    let googleLangIdx = voices.findIndex(v => (v.name.toLowerCase().includes('google') || (v.voiceURI && v.voiceURI.toLowerCase().includes('google'))) && v.lang.toLowerCase().startsWith(pageLang));
+    let googleAnyIdx = voices.findIndex(v => v.name.toLowerCase().includes('google') || (v.voiceURI && v.voiceURI.toLowerCase().includes('google')));
+    let langIdx = voices.findIndex(v => v.lang.toLowerCase().startsWith(pageLang));
+    let defaultIdx = voices.findIndex(v => v.default);
+    if (voices.length > 0) {
+      if (googleLangIdx >= 0) {
+        voiceSelect.value = googleLangIdx;
+        selectedVoice = voices[googleLangIdx];
+      } else if (googleAnyIdx >= 0) {
+        voiceSelect.value = googleAnyIdx;
+        selectedVoice = voices[googleAnyIdx];
+      } else if (langIdx >= 0) {
+        voiceSelect.value = langIdx;
+        selectedVoice = voices[langIdx];
+      } else if (defaultIdx >= 0) {
+        voiceSelect.value = defaultIdx;
+        selectedVoice = voices[defaultIdx];
+      } else {
+        voiceSelect.value = 0;
+        selectedVoice = voices[0];
+      }
+    }
+  }
+  populateVoices();
+  if (typeof synth.onvoiceschanged !== 'undefined') {
+    synth.onvoiceschanged = populateVoices;
+  }
+  function restartReadingIfActive() {
+    if (synth.speaking && !synth.paused) {
+      // Resume from current block
+      synth.cancel();
+      setTimeout(() => {
+        if (blocks.length > 0) speakBlock(currentIdx);
+      }, 150);
+    }
+  }
+  voiceSelect.onchange = () => {
+    selectedVoice = voices[voiceSelect.value];
+    restartReadingIfActive();
+  };
+  rateSlider.oninput = () => {
+    selectedRate = parseFloat(rateSlider.value);
+    rateValue.textContent = selectedRate.toFixed(2);
+    restartReadingIfActive();
+  };
+  // Set initial rate value
+  rateValue.textContent = rateSlider.value;
 
   // Block selectors
   const BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,section,article';
@@ -77,6 +166,8 @@
     if (!text) return;
     utter = new SpeechSynthesisUtterance(text);
     utter.lang = detectLang(blocks[idx]) || navigator.language;
+    if (selectedVoice) utter.voice = selectedVoice;
+    utter.rate = selectedRate;
     utter.onend = () => {
       pauseBtn.textContent = '⏸️ Pause';
       speakBlock(currentIdx + 1);
@@ -87,7 +178,15 @@
     utter.onresume = () => {
       pauseBtn.textContent = '⏸️ Pause';
     };
-    synth.speak(utter);
+    // Chrome bug workaround: cancel before speak, and use setTimeout
+    if (synth.speaking) synth.cancel();
+    setTimeout(() => {
+      try {
+        synth.speak(utter);
+      } catch (e) {
+        console.error('Failed to speak with selected voice:', selectedVoice, e);
+      }
+    }, 150);
     bar.style.display = 'flex';
     pauseBtn.textContent = '⏸️ Pause';
     document.getElementById('rfh-status').textContent = `Block ${idx + 1} of ${blocks.length}`;
@@ -120,6 +219,8 @@
           stopReading();
           utter = new SpeechSynthesisUtterance(selection.toString());
           utter.lang = detectLang(selection.anchorNode && selection.anchorNode.parentElement ? selection.anchorNode.parentElement : document.body) || navigator.language;
+          if (selectedVoice) utter.voice = selectedVoice;
+          utter.rate = selectedRate;
           utter.onend = () => {
             pauseBtn.textContent = '⏸️ Pause';
           };
@@ -129,7 +230,14 @@
           utter.onresume = () => {
             pauseBtn.textContent = '⏸️ Pause';
           };
-          synth.speak(utter);
+          if (synth.speaking) synth.cancel();
+          setTimeout(() => {
+            try {
+              synth.speak(utter);
+            } catch (e) {
+              console.error('Failed to speak with selected voice:', selectedVoice, e);
+            }
+          }, 150);
           bar.style.display = 'flex';
           pauseBtn.textContent = '⏸️ Pause';
           document.getElementById('rfh-status').textContent = `Selected text`;
@@ -147,6 +255,8 @@
           stopReading();
           utter = new SpeechSynthesisUtterance(selection.toString());
           utter.lang = detectLang(block || document.body) || navigator.language;
+          if (selectedVoice) utter.voice = selectedVoice;
+          utter.rate = selectedRate;
           utter.onend = () => {
             pauseBtn.textContent = '⏸️ Pause';
             // After selection, continue with the rest of the current block, then move to next blocks
@@ -175,6 +285,8 @@
                 // Read the rest of the current block
                 let blockUtter = new SpeechSynthesisUtterance(afterText);
                 blockUtter.lang = detectLang(block) || navigator.language;
+                if (selectedVoice) blockUtter.voice = selectedVoice;
+                blockUtter.rate = selectedRate;
                 blockUtter.onend = () => {
                   // After finishing the block, continue with next blocks
                   if (startIdx >= 0 && startIdx < allBlocks.length - 1) {
@@ -185,7 +297,14 @@
                 };
                 blockUtter.onpause = () => { pauseBtn.textContent = '▶️ Play'; };
                 blockUtter.onresume = () => { pauseBtn.textContent = '⏸️ Pause'; };
-                synth.speak(blockUtter);
+                if (synth.speaking) synth.cancel();
+                setTimeout(() => {
+                  try {
+                    synth.speak(blockUtter);
+                  } catch (e) {
+                    console.error('Failed to speak with selected voice:', selectedVoice, e);
+                  }
+                }, 150);
                 bar.style.display = 'flex';
                 pauseBtn.textContent = '⏸️ Pause';
                 document.getElementById('rfh-status').textContent = `Selected text + block + page`;
@@ -202,7 +321,14 @@
           };
           utter.onpause = () => { pauseBtn.textContent = '▶️ Play'; };
           utter.onresume = () => { pauseBtn.textContent = '⏸️ Pause'; };
-          synth.speak(utter);
+          if (synth.speaking) synth.cancel();
+          setTimeout(() => {
+            try {
+              synth.speak(utter);
+            } catch (e) {
+              console.error('Failed to speak with selected voice:', selectedVoice, e);
+            }
+          }, 150);
           bar.style.display = 'flex';
           pauseBtn.textContent = '⏸️ Pause';
           document.getElementById('rfh-status').textContent = `Selected text + block + page`;
