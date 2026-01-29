@@ -110,40 +110,117 @@
     return document.documentElement.lang || null;
   }
 
-  // Listen for custom event from background
-  window.addEventListener('read-from-here', (e) => {
+  // Listen for messages from background (Manifest V3 compatible)
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg && msg.type === 'READ_FROM_HERE') {
       // If user has selected text, read from selection
       const selection = window.getSelection();
-      if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
-        stopReading();
-        // Read only the selected text
-        utter = new SpeechSynthesisUtterance(selection.toString());
-        utter.lang = detectLang(selection.anchorNode && selection.anchorNode.parentElement ? selection.anchorNode.parentElement : document.body) || navigator.language;
-        utter.onend = () => {
+      if (msg.mode === 'selection') {
+        if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
+          stopReading();
+          utter = new SpeechSynthesisUtterance(selection.toString());
+          utter.lang = detectLang(selection.anchorNode && selection.anchorNode.parentElement ? selection.anchorNode.parentElement : document.body) || navigator.language;
+          utter.onend = () => {
+            pauseBtn.textContent = '⏸️ Pause';
+          };
+          utter.onpause = () => {
+            pauseBtn.textContent = '▶️ Play';
+          };
+          utter.onresume = () => {
+            pauseBtn.textContent = '⏸️ Pause';
+          };
+          synth.speak(utter);
+          bar.style.display = 'flex';
           pauseBtn.textContent = '⏸️ Pause';
-        };
-        utter.onpause = () => {
-          pauseBtn.textContent = '▶️ Play';
-        };
-        utter.onresume = () => {
+          document.getElementById('rfh-status').textContent = `Selected text`;
+          return;
+        }
+      } else if (msg.mode === 'from-here') {
+        if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
+          // Find the block containing the selection's anchorNode
+          let anchorNode = selection.anchorNode;
+          let block = anchorNode ? (anchorNode.nodeType === 1 ? anchorNode : anchorNode.parentElement).closest(BLOCK_SELECTOR) : null;
+          // Collect all blocks in document order
+          const allBlocks = Array.from(document.querySelectorAll(BLOCK_SELECTOR));
+          const startIdx = block ? allBlocks.indexOf(block) : -1;
+          // Read selection first
+          stopReading();
+          utter = new SpeechSynthesisUtterance(selection.toString());
+          utter.lang = detectLang(block || document.body) || navigator.language;
+          utter.onend = () => {
+            pauseBtn.textContent = '⏸️ Pause';
+            // After selection, continue with the rest of the current block, then move to next blocks
+            if (block) {
+              // Get all text nodes in the block
+              let walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null);
+              let textNodes = [];
+              let node;
+              while ((node = walker.nextNode())) {
+                textNodes.push(node);
+              }
+              // Find the text node and offset where the selection ends
+              let selEndNode = selection.focusNode;
+              let selEndOffset = selection.focusOffset;
+              let foundEnd = false;
+              let afterText = '';
+              for (let tn of textNodes) {
+                if (foundEnd) {
+                  afterText += tn.textContent;
+                } else if (tn === selEndNode) {
+                  afterText += tn.textContent.substring(selEndOffset);
+                  foundEnd = true;
+                }
+              }
+              if (afterText.trim().length > 0) {
+                // Read the rest of the current block
+                let blockUtter = new SpeechSynthesisUtterance(afterText);
+                blockUtter.lang = detectLang(block) || navigator.language;
+                blockUtter.onend = () => {
+                  // After finishing the block, continue with next blocks
+                  if (startIdx >= 0 && startIdx < allBlocks.length - 1) {
+                    blocks = allBlocks.slice(startIdx + 1);
+                    currentIdx = 0;
+                    speakBlock(currentIdx);
+                  }
+                };
+                blockUtter.onpause = () => { pauseBtn.textContent = '▶️ Play'; };
+                blockUtter.onresume = () => { pauseBtn.textContent = '⏸️ Pause'; };
+                synth.speak(blockUtter);
+                bar.style.display = 'flex';
+                pauseBtn.textContent = '⏸️ Pause';
+                document.getElementById('rfh-status').textContent = `Selected text + block + page`;
+                return;
+              } else {
+                // No more text in block, continue with next blocks
+                if (startIdx >= 0 && startIdx < allBlocks.length - 1) {
+                  blocks = allBlocks.slice(startIdx + 1);
+                  currentIdx = 0;
+                  speakBlock(currentIdx);
+                }
+              }
+            }
+          };
+          utter.onpause = () => { pauseBtn.textContent = '▶️ Play'; };
+          utter.onresume = () => { pauseBtn.textContent = '⏸️ Pause'; };
+          synth.speak(utter);
+          bar.style.display = 'flex';
           pauseBtn.textContent = '⏸️ Pause';
-        };
-        synth.speak(utter);
-        bar.style.display = 'flex';
-        pauseBtn.textContent = '⏸️ Pause';
-        document.getElementById('rfh-status').textContent = `Selected text`;
-        return;
+          document.getElementById('rfh-status').textContent = `Selected text + block + page`;
+          return;
+        }
       }
-      // Otherwise, use block logic
+      // Default: read page from here (no selection or fallback)
       let target = document.activeElement;
-      if (!target || target === document.body) target = document.elementFromPoint(e.detail?.clientX || 0, e.detail?.clientY || 0) || document.body;
+      if (!target || target === document.body) target = document.elementFromPoint(msg.clientX || 0, msg.clientY || 0) || document.body;
       let block = target.closest(BLOCK_SELECTOR);
       if (!block) block = document.body;
-      // Collect all blocks in document
-      blocks = Array.from(document.querySelectorAll(BLOCK_SELECTOR));
-      currentIdx = blocks.indexOf(block);
-      if (currentIdx < 0) currentIdx = 0;
+      // Collect all blocks in document order
+      const allBlocks = Array.from(document.querySelectorAll(BLOCK_SELECTOR));
+      const startIdx = allBlocks.indexOf(block);
+      blocks = startIdx >= 0 ? allBlocks.slice(startIdx) : allBlocks;
+      currentIdx = 0;
       speakBlock(currentIdx);
+    }
   });
 
   // Clean up on navigation
