@@ -20,6 +20,10 @@
           <input id="rfh-rate" type="range" min="0.5" max="2" step="0.25" value="1" style="width:80px;">
           <span id="rfh-rate-value">1.00</span>
         </label>
+        <label for="rfh-highlight" style="margin-left:8px;display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input id="rfh-highlight" type="checkbox" checked aria-checked="true" aria-label="Highlight Text" tabindex="0" style="accent-color:#0078d4; width:16px; height:16px;" />
+          <span>Highlight Text</span>
+        </label>
         <span id="rfh-status" style="margin-left:16px;"></span>
       </div>
     </div>
@@ -116,6 +120,59 @@
   // Set initial rate value
   rateValue.textContent = rateSlider.value;
 
+  // Highlighting setup
+  let highlightEnabled = true;
+  const highlightCheckbox = document.getElementById('rfh-highlight');
+  let currentHighlightedElement = null;
+  
+  if (highlightCheckbox) {
+    highlightCheckbox.addEventListener('change', () => {
+      highlightEnabled = highlightCheckbox.checked;
+      highlightCheckbox.setAttribute('aria-checked', highlightEnabled ? 'true' : 'false');
+      if (!highlightEnabled && currentHighlightedElement) {
+        clearTextHighlight();
+      }
+    });
+    highlightCheckbox.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        highlightCheckbox.checked = !highlightCheckbox.checked;
+        highlightCheckbox.dispatchEvent(new Event('change'));
+      }
+    });
+  }
+
+  // Text highlighting functions
+  function clearTextHighlight() {
+    if (currentHighlightedElement) {
+      currentHighlightedElement.style.backgroundColor = '';
+      currentHighlightedElement.style.color = '';
+      currentHighlightedElement.style.padding = '';
+      currentHighlightedElement.style.borderRadius = '';
+      currentHighlightedElement = null;
+    }
+  }
+
+  function highlightText(element, charIndex, length) {
+    if (!highlightEnabled || !element) return;
+    
+    clearTextHighlight();
+    
+    try {
+      const text = element.textContent;
+      if (charIndex >= 0 && charIndex + length <= text.length) {
+        // Simple approach: highlight the entire element
+        element.style.backgroundColor = '#1976d2';
+        element.style.color = '#fff';
+        element.style.padding = '2px 4px';
+        element.style.borderRadius = '2px';
+        currentHighlightedElement = element;
+      }
+    } catch (err) {
+      // Silently fail to not interrupt speech
+    }
+  }
+
   // Block selectors
   const BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,section,article';
 
@@ -162,14 +219,16 @@
     if (idx < 0 || idx >= blocks.length) return;
     currentIdx = idx;
     highlight(idx);
-    const text = blocks[idx].innerText.trim();
+    const block = blocks[idx];
+    const text = block.innerText.trim();
     if (!text) return;
     utter = new SpeechSynthesisUtterance(text);
-    utter.lang = detectLang(blocks[idx]) || navigator.language;
+    utter.lang = detectLang(block) || navigator.language;
     if (selectedVoice) utter.voice = selectedVoice;
     utter.rate = selectedRate;
     utter.onend = () => {
       pauseBtn.textContent = '⏸️ Pause';
+      clearTextHighlight();
       speakBlock(currentIdx + 1);
     };
     utter.onpause = () => {
@@ -178,6 +237,15 @@
     utter.onresume = () => {
       pauseBtn.textContent = '⏸️ Pause';
     };
+    
+    // Add text highlighting synchronization
+    if ('onboundary' in utter) {
+      utter.onboundary = function(event) {
+        if (event.name === 'word' && highlightEnabled) {
+          highlightText(block, event.charIndex, event.charLength || 1);
+        }
+      };
+    }
     // Chrome bug workaround: cancel before speak, and use setTimeout
     if (synth.speaking) synth.cancel();
     setTimeout(() => {
@@ -194,6 +262,7 @@
   function stopReading() {
     if (utter) synth.cancel();
     clearHighlight();
+    clearTextHighlight();
     bar.style.display = 'none';
     document.getElementById('rfh-status').textContent = '';
     pauseBtn.textContent = '⏸️ Pause';
