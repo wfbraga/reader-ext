@@ -123,13 +123,13 @@
   // Highlighting setup
   let highlightEnabled = true;
   const highlightCheckbox = document.getElementById('rfh-highlight');
-  let currentHighlightedElement = null;
+  let currentWordHighlight = null;
   
   if (highlightCheckbox) {
     highlightCheckbox.addEventListener('change', () => {
       highlightEnabled = highlightCheckbox.checked;
       highlightCheckbox.setAttribute('aria-checked', highlightEnabled ? 'true' : 'false');
-      if (!highlightEnabled && currentHighlightedElement) {
+      if (!highlightEnabled && currentWordHighlight) {
         clearTextHighlight();
       }
     });
@@ -144,33 +144,104 @@
 
   // Text highlighting functions
   function clearTextHighlight() {
-    if (currentHighlightedElement) {
-      currentHighlightedElement.style.backgroundColor = '';
-      currentHighlightedElement.style.color = '';
-      currentHighlightedElement.style.padding = '';
-      currentHighlightedElement.style.borderRadius = '';
-      currentHighlightedElement = null;
+    if (currentWordHighlight) {
+      const parent = currentWordHighlight.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(currentWordHighlight.textContent), currentWordHighlight);
+        parent.normalize(); // Merge adjacent text nodes
+      }
+      currentWordHighlight = null;
     }
   }
 
-  function highlightText(element, charIndex, length) {
-    if (!highlightEnabled || !element) return;
+  function highlightWordAtPosition(element, charIndex) {
+    if (!highlightEnabled || !element || charIndex < 0) return;
     
+    // Clear previous highlight
     clearTextHighlight();
     
     try {
       const text = element.textContent;
-      if (charIndex >= 0 && charIndex + length <= text.length) {
-        // Simple approach: highlight the entire element
-        element.style.backgroundColor = '#1976d2';
-        element.style.color = '#fff';
-        element.style.padding = '2px 4px';
-        element.style.borderRadius = '2px';
-        currentHighlightedElement = element;
+      if (charIndex >= text.length) return;
+      
+      // Find word boundaries around charIndex
+      let wordStart = charIndex;
+      let wordEnd = charIndex;
+      
+      // Find start of word (go backwards until whitespace or start)
+      while (wordStart > 0 && !/\s/.test(text[wordStart - 1])) {
+        wordStart--;
+      }
+      
+      // Find end of word (go forwards until whitespace or end)
+      while (wordEnd < text.length && !/\s/.test(text[wordEnd])) {
+        wordEnd++;
+      }
+      
+      if (wordStart === wordEnd) return; // No word found
+      
+      // Create range for the word
+      const range = document.createRange();
+      const textNodes = getTextNodesIn(element);
+      let currentPos = 0;
+      
+      for (let textNode of textNodes) {
+        const nodeLength = textNode.textContent.length;
+        
+        if (currentPos <= wordStart && wordStart < currentPos + nodeLength) {
+          const startOffset = wordStart - currentPos;
+          const endOffset = Math.min(wordEnd - currentPos, nodeLength);
+          
+          range.setStart(textNode, startOffset);
+          
+          if (wordEnd <= currentPos + nodeLength) {
+            range.setEnd(textNode, endOffset);
+          } else {
+            // Word spans multiple text nodes, find end node
+            let endPos = currentPos + nodeLength;
+            let endNode = textNode;
+            for (let i = textNodes.indexOf(textNode) + 1; i < textNodes.length; i++) {
+              endNode = textNodes[i];
+              if (endPos + endNode.textContent.length >= wordEnd) {
+                range.setEnd(endNode, wordEnd - endPos);
+                break;
+              }
+              endPos += endNode.textContent.length;
+            }
+          }
+          
+          // Create highlight span
+          const span = document.createElement('span');
+          span.style.backgroundColor = '#ffd600';
+          span.style.color = '#222';
+          span.style.padding = '1px 2px';
+          span.style.borderRadius = '2px';
+          span.className = 'rfh-word-highlight';
+          
+          range.surroundContents(span);
+          currentWordHighlight = span;
+          break;
+        }
+        currentPos += nodeLength;
       }
     } catch (err) {
       // Silently fail to not interrupt speech
     }
+  }
+  
+  function getTextNodesIn(node) {
+    const textNodes = [];
+    const walker = document.createTreeWalker(
+      node,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    let textNode;
+    while (textNode = walker.nextNode()) {
+      textNodes.push(textNode);
+    }
+    return textNodes;
   }
 
   // Block selectors
@@ -242,7 +313,7 @@
     if ('onboundary' in utter) {
       utter.onboundary = function(event) {
         if (event.name === 'word' && highlightEnabled) {
-          highlightText(block, event.charIndex, event.charLength || 1);
+          highlightWordAtPosition(block, event.charIndex);
         }
       };
     }
