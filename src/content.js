@@ -4,27 +4,27 @@
 (function() {
   // Overlay UI HTML
   const overlayHTML = `
-    <div id="rfh-overlay" style="position:fixed;top:0;left:0;width:100vw;z-index:2147483647;background:#eee;color:#222;box-shadow:0 2px 8px #0002;display:none;align-items:center;gap:8px;padding:8px 16px;font-family:sans-serif;flex-wrap:wrap;">
-      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;width:100%;">
-        <button id="rfh-prev">⏮️ Last block</button>
-        <button id="rfh-pause">⏸️ Pause</button>
-        <button id="rfh-next">⏭️ Next block</button>
-        <button id="rfh-stop">⏹️ Stop</button>
-        <button id="rfh-contrast">🌓 High Contrast</button>
-        <label style="margin-left:8px;display:flex;align-items:center;gap:4px;">
+    <div id="rfh-overlay" style="position:fixed;top:0;left:0;width:100vw;z-index:2147483647;background:#eee;color:#222;box-shadow:0 1px 4px #0002;display:none;align-items:center;gap:4px;padding:2px 8px;font-family:sans-serif;font-size:12px;flex-wrap:wrap;line-height:1.2;">
+      <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;width:100%;">
+        <button id="rfh-prev" style="padding:1px 4px;font-size:11px;line-height:1.2;">⏮️ Last</button>
+        <button id="rfh-pause" style="padding:1px 4px;font-size:11px;line-height:1.2;">⏸️ Pause</button>
+        <button id="rfh-next" style="padding:1px 4px;font-size:11px;line-height:1.2;">⏭️ Next</button>
+        <button id="rfh-stop" style="padding:1px 4px;font-size:11px;line-height:1.2;">⏹️ Stop</button>
+        <button id="rfh-contrast" style="padding:1px 4px;font-size:11px;line-height:1.2;">🌓 Contrast</button>
+        <label style="margin-left:4px;display:flex;align-items:center;gap:3px;font-size:11px;">
           <span>Voice:</span>
-          <select id="rfh-voice" style="max-width:180px;"></select>
+          <select id="rfh-voice" style="max-width:140px;font-size:11px;padding:0px 2px;height:18px;"></select>
         </label>
-        <label style="margin-left:8px;display:flex;align-items:center;gap:4px;">
+        <label style="margin-left:4px;display:flex;align-items:center;gap:3px;font-size:11px;">
           <span>Speed:</span>
-          <input id="rfh-rate" type="range" min="0.5" max="2" step="0.25" value="1" style="width:80px;">
-          <span id="rfh-rate-value">1.00</span>
+          <input id="rfh-rate" type="range" min="0.5" max="2" step="0.25" value="1" style="width:60px;height:14px;">
+          <span id="rfh-rate-value" style="font-size:11px;">1.00</span>
         </label>
-        <label for="rfh-highlight" style="margin-left:8px;display:flex;align-items:center;gap:4px;cursor:pointer;">
-          <input id="rfh-highlight" type="checkbox" checked aria-checked="true" aria-label="Highlight Text" tabindex="0" style="accent-color:#0078d4; width:16px; height:16px;" />
-          <span>Highlight Text</span>
+        <label for="rfh-highlight" style="margin-left:4px;display:flex;align-items:center;gap:3px;cursor:pointer;font-size:11px;">
+          <input id="rfh-highlight" type="checkbox" checked aria-checked="true" aria-label="Highlight Text" tabindex="0" style="accent-color:#0078d4; width:12px; height:12px;" />
+          <span>Highlight</span>
         </label>
-        <span id="rfh-status" style="margin-left:16px;"></span>
+        <span id="rfh-status" style="margin-left:8px;font-size:11px;"></span>
       </div>
     </div>
   `;
