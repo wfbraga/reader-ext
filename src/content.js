@@ -13,7 +13,7 @@
         <button id="rfh-contrast" style="padding:1px 4px;font-size:11px;line-height:1.2;">🌓 Contrast</button>
         <label style="margin-left:4px;display:flex;align-items:center;gap:3px;font-size:11px;">
           <span>Voice:</span>
-          <select id="rfh-voice" style="max-width:140px;font-size:11px;padding:0px 2px;height:18px;"></select>
+          <select id="rfh-voice" style="max-width:140px;font-size:11px;padding:0px 2px;height:18px;appearance:none;background-image:none;"></select>
         </label>
         <label style="margin-left:4px;display:flex;align-items:center;gap:3px;font-size:11px;">
           <span>Speed:</span>
