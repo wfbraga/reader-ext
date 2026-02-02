@@ -480,9 +480,32 @@
       if (!target || target === document.body) target = document.elementFromPoint(msg.clientX || 0, msg.clientY || 0) || document.body;
       let block = target.closest(BLOCK_SELECTOR);
       if (!block) block = document.body;
+      
       // Collect all blocks in document order
       const allBlocks = Array.from(document.querySelectorAll(BLOCK_SELECTOR));
-      const startIdx = allBlocks.indexOf(block);
+      let startIdx = allBlocks.indexOf(block);
+      
+      // For "Read page" mode, start from the most important content
+      if (msg.mode === 'page') {
+        // Find the most important starting point: first <h1>, then <article>, then <main>
+        let mainContent = document.querySelector('h1') || 
+                         document.querySelector('article') || 
+                         document.querySelector('main');
+        
+        if (mainContent) {
+          // Find the first block within or after the main content
+          let mainBlock = mainContent.closest(BLOCK_SELECTOR) || 
+                         mainContent.querySelector(BLOCK_SELECTOR);
+          
+          if (mainBlock) {
+            const mainIdx = allBlocks.indexOf(mainBlock);
+            if (mainIdx >= 0) {
+              startIdx = mainIdx;
+            }
+          }
+        }
+      }
+      
       blocks = startIdx >= 0 ? allBlocks.slice(startIdx) : allBlocks;
       currentIdx = 0;
       speakBlock(currentIdx);
